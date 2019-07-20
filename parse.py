@@ -75,14 +75,15 @@ def get_seq_reads(filename, incuded_seqs):
     for i in range(len(lines) - 1):
         if lines[i][0] == "@" and lines[i + 1][0] != "@":
             reads.append(lines[i + 1].rstrip())
-
-    reads = reads[500:100000]
+    #reads = reads[500:100000]
 
     i = 1
     scores = [[] for x in range(len(included_seq_ints))]
     seq_reads = [[] for x in range(len(included_seq_ints))]
     used_reads = 0
+    j = -1
     for r in reads:
+        j += 1
         best_score = 1000
         best_i = 0
         r_ints = convert_seq_to_int_array(r)
@@ -96,24 +97,26 @@ def get_seq_reads(filename, incuded_seqs):
 
         if best_score > 3:
             continue
-
-        used_reads += 1
+        #used_reads += 1
         seq_reads[best_i].append(r)
 
     return seq_reads
 
 included_seqs = get_included_seqs("included_seqs.csv")
-seq_reads_dms = get_seq_reads("data/TAGTACTGCCAG/Sample1_S1_L001_R2_001.fastq", included_seqs)
-seq_reads_nomod = get_seq_reads("data/AGTCGTGATGTT/Sample1_S1_L001_R2_001.fastq", included_seqs)
+seq_reads_dms = get_seq_reads("data/TAGTACTGCCAG/Sample1_S1_L001_R2_001_test.fastq", included_seqs)
+seq_reads_nomod = get_seq_reads("data/AGTCGTGATGTT/Sample1_S1_L001_R2_001_test.fastq", included_seqs)
 included_seq_ints = []
 for seq in included_seqs:
     included_seq_ints.append(convert_seq_to_int_array(seq))
 
 
 for i, seq in enumerate(included_seqs):
+    print seq, len(seq_reads_dms[i]), len(seq_reads_nomod[i])
+    #print seq, len(seq_reads_dms[i])
+    exit()
     if i != 0:
         continue
-    print seq, len(seq_reads_dms[i]), len(seq_reads_nomod[i])
+    continue
     dist_dms = get_mutation_profile(seq, included_seq_ints[i], seq_reads_dms[i])
     dist_nomod = get_mutation_profile(seq, included_seq_ints[i], seq_reads_nomod[i])
     dist_substract = list(dist_dms)
@@ -141,5 +144,5 @@ for i, seq in enumerate(included_seqs):
     exit()
 
 
-print used_reads, len(reads)
+#print used_reads, len(reads)
 

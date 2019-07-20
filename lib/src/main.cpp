@@ -106,13 +106,19 @@ public:
 
 public:
     size_t
-    length() { return _sequence.length(); }
+    length() const { return _sequence.length(); }
 
     inline
     int
     get_res_code(
-            int pos) {
+            int pos) const {
         return _res_codes[pos];
+    }
+
+    inline
+    std::string const &
+    str() const {
+        return _sequence;
     }
 
 private:
@@ -140,12 +146,50 @@ struct Alignment {
     int mismatches;
 };
 
+typedef std::vector<Alignment> Alignments;
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // main functions
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+std::string & ltrim(std::string & s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    std::ptr_fun<int, int>(std::isgraph)));
+    return s;
+}
+
+std::string & rtrim(std::string & s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         std::ptr_fun<int, int>(std::isgraph)).base(), s.end());
+    return s;
+}
+
+std::string & trim(std::string & s) {
+    return ltrim(rtrim(s));
+}
+
 void
 parse_reads_from_fastq(
+        std::string const & filename,
+        Sequences & sequences /*return*/) {
+    auto previous_line = std::string();
+    auto line = std::string();
+    auto in = std::ifstream();
+    in.open(filename);
+    getline(in, previous_line);
+    while(in.good()) {
+        getline(in, line);
+        if (previous_line[0] == '@' && line[0] != '@') {
+            sequences.push_back(Sequence(trim(line)));
+        }
+        previous_line = line;
+    }
+    in.close();
+    LOG_INFO << sequences.size() << " read(s) loaded from fastq file: " << filename;
+}
+
+void
+get_source_sequences(
         std::string const & filename,
         Sequences & sequences /*return*/) {
     auto line = std::string();
@@ -154,22 +198,75 @@ parse_reads_from_fastq(
     while(in.good()) {
         getline(in, line);
         if(line.length() == 0) { continue; }
-        if(line[0] == '@') {
-            getline(in, line);
-            if(line.length() == 0) { continue; }
-            if(line[0] != '@') {
-                sequences.push_back(Sequence(line));
+        sequences.push_back(Sequence(trim(line)));
+    }
+    LOG_INFO << sequences.size() << " source sequence(s) from file: " << filename;
+}
+
+bool
+get_best_pairwise_alignment(
+        Sequence const & seq_1,
+        Sequence const & seq_2,
+        int threshold,
+        Alignment & alignment /*return*/) {
+    alignment.mismatches = threshold;
+    auto best_score = threshold;
+    auto best_pos = 0;
+    auto score = 0;
+    for(int i = 0; i < seq_1.length(); i++) {
+        score = 0;
+        if(seq_2.length() >= seq_1.length() - i) { break; }
+        for(int j = 0; j < seq_2.length(); j++) {
+            if(seq_1.get_res_code(i+j) != seq_2.get_res_code(j)) {
+                score += 1;
+                if(score > threshold) { break; }
             }
         }
+        if(score < best_score) {
+            best_pos = i;
+            best_score = score;
+        }
     }
-    LOG_INFO << sequences.size() << " reads loaded from fastq file: " << filename;
+    if(best_score < threshold) {
+        alignment.pos = best_pos;
+        alignment.mismatches = best_score;
+        return true;
+    }
+    return false;
 }
 
 void
-get_source_sequences(
-        std::string const & filename,
-        Sequences & sequences /*return*/) {
+get_seq_reads(
+        Sequences const & source_seqs,
+        Sequences const & reads,
+        int mismatch_threshold,
+        std::vector<Sequences> & seq_reads /*return*/,
+        std::vector<Alignments> & seq_alignments /*return*/) {
 
+    auto best_i = 0;
+    auto i = 0;
+    auto aligned = false;
+    auto alignment = Alignment();
+    auto best_alignment = Alignment();
+    auto j = -1;
+    for(auto const & read: reads) {
+        j++;
+        best_alignment.mismatches = 100;
+        best_i = 0;
+        i = -1;
+        for(auto const & seq : source_seqs) {
+            i++;
+            aligned = get_best_pairwise_alignment(read, seq, 20, alignment);
+            if(!aligned) { continue; }
+            if(alignment.mismatches < best_alignment.mismatches) {
+                best_alignment = alignment;
+                best_i = i;
+            }
+        }
+        if(best_alignment.mismatches > mismatch_threshold) { continue; }
+        seq_reads[best_i].push_back(read);
+        seq_alignments[best_i].push_back(alignment);
+    }
 }
 
 
@@ -180,11 +277,23 @@ int main(
     init_logging(plog::Severity::info);
     parse_command_line(argc, argv, parameters);
 
+    auto source_seqs = Sequences();
     auto dms_reads = Sequences();
     auto nomod_reads = Sequences();
 
+    get_source_sequences(parameters.source_seqs, source_seqs);
     parse_reads_from_fastq(parameters.dms_fasta, dms_reads);
     parse_reads_from_fastq(parameters.nomod_fastq, nomod_reads);
+    auto dms_seq_reads = std::vector<Sequences>(source_seqs.size());
+    auto dms_alignments = std::vector<Alignments>(source_seqs.size());
+
+    get_seq_reads(source_seqs, dms_reads, 3, dms_seq_reads, dms_alignments);
+    int i = 0;
+    for(auto const & seq : source_seqs) {
+        LOG_INFO << seq.str() << " " << dms_seq_reads[i].size();
+        i++;
+    }
+
 
     return 0;
 }
