@@ -113,10 +113,8 @@ for seq in included_seqs:
 for i, seq in enumerate(included_seqs):
     print seq, len(seq_reads_dms[i]), len(seq_reads_nomod[i])
     #print seq, len(seq_reads_dms[i])
-    exit()
     if i != 0:
         continue
-    continue
     dist_dms = get_mutation_profile(seq, included_seq_ints[i], seq_reads_dms[i])
     dist_nomod = get_mutation_profile(seq, included_seq_ints[i], seq_reads_nomod[i])
     dist_substract = list(dist_dms)
@@ -124,6 +122,8 @@ for i, seq in enumerate(included_seqs):
         dist_substract[i] = dist_dms[i] - dist_nomod[i]
         if dist_substract[i] < 0:
             dist_substract[i] = 0
+    print dist_substract
+    exit()
 
     fig, axs = plt.subplots(3, 1)
 

@@ -269,6 +269,25 @@ get_seq_reads(
     }
 }
 
+void
+get_mutation_histogram(
+        Sequence const & source_seq,
+        Sequences const & seq_reads,
+        Alignments const & seq_alignments,
+        std::vector<int> & hist) {
+    int i = 0;
+    int offset = 0;
+    for(auto const & read : seq_reads) {
+        offset = seq_alignments[i].pos;
+        for(int j = 0; j < source_seq.length(); j++) {
+            if(read.get_res_code(offset + j) != source_seq.get_res_code(j)) {
+                hist[j] += 1;
+            }
+        }
+        i++;
+    }
+}
+
 
 int main(
         int argc,
@@ -284,13 +303,37 @@ int main(
     get_source_sequences(parameters.source_seqs, source_seqs);
     parse_reads_from_fastq(parameters.dms_fasta, dms_reads);
     parse_reads_from_fastq(parameters.nomod_fastq, nomod_reads);
+
     auto dms_seq_reads = std::vector<Sequences>(source_seqs.size());
     auto dms_alignments = std::vector<Alignments>(source_seqs.size());
+    auto nomod_seq_reads = std::vector<Sequences>(source_seqs.size());
+    auto nomod_alignments = std::vector<Alignments>(source_seqs.size());
 
     get_seq_reads(source_seqs, dms_reads, 3, dms_seq_reads, dms_alignments);
+    get_seq_reads(source_seqs, nomod_reads, 3, nomod_seq_reads, nomod_alignments);
+
+    std::ofstream out;
+    out.open("results.out");
+    out << "sequence,dms_hist,nomod_hist,substracted_hist\n";
     int i = 0;
     for(auto const & seq : source_seqs) {
-        LOG_INFO << seq.str() << " " << dms_seq_reads[i].size();
+        LOG_INFO << seq.str() << " " << dms_seq_reads[i].size() << " " << nomod_seq_reads[i].size();
+        out << seq.str() << ",";
+        auto dms_hist = std::vector<int>(seq.length());
+        auto nomod_hist = std::vector<int>(seq.length());
+        auto substracted_hist = std::vector<int>(seq.length());
+        get_mutation_histogram(seq, dms_seq_reads[i], dms_alignments[i], dms_hist);
+        get_mutation_histogram(seq, nomod_seq_reads[i], nomod_alignments[i], nomod_hist);
+        for(auto const & e : dms_hist) { out << e << ";";}
+        out << ",";
+        for(auto const & e : nomod_hist) { out << e << ";";}
+        out << ",";
+        for(int j = 0; j < seq.length(); j++) {
+            substracted_hist[j] = dms_hist[j] - nomod_hist[j];
+            if(substracted_hist[j] < 0) { substracted_hist[j] = 0; }
+        }
+        for(auto const & e : substracted_hist) { out << e << ";";}
+        out << std::endl;
         i++;
     }
 
